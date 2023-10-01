@@ -11,7 +11,11 @@ const schema = Joi.object({
 });
 
 const saveContacts = async (contacts) => {
-  await fs.writeFile(contactsPath, JSON.stringify(contacts, null, 2));
+  try {
+    await fs.writeFile(contactsPath, JSON.stringify(contacts, null, 2));
+  } catch (error) {
+    console.error(error);
+  }
 };
 
 const listContacts = async () => {
@@ -24,66 +28,82 @@ const listContacts = async () => {
 };
 
 const getContactById = async (contactId) => {
-  const contacts = await listContacts();
-  const contact = await contacts.filter((el) => {
-    return el.id === contactId;
-  });
-  return contact;
+  try {
+    const contacts = await listContacts();
+    const contact = await contacts.filter((el) => {
+      return el.id === contactId;
+    });
+    return contact;
+  } catch (error) {
+    console.error(error);
+  }
 };
 
 const removeContact = async (contactId) => {
-  const contacts = await listContacts();
-  const data = contacts.filter((contact) => {
-    return contact.id !== contactId;
-  });
+  try {
+    const contacts = await listContacts();
+    const data = contacts.filter((contact) => {
+      return contact.id !== contactId;
+    });
 
-  a = data;
-  b = contacts;
+    a = data;
+    b = contacts;
 
-  if (JSON.stringify(a) === JSON.stringify(b)) {
-    return false;
+    if (JSON.stringify(a) === JSON.stringify(b)) {
+      return false;
+    }
+    await saveContacts(data);
+    return true;
+  } catch (error) {
+    console.error(error);
   }
-  await saveContacts(data);
-  return true;
 };
 
 const addContact = async (body) => {
-  const contacts = await listContacts();
-  const { error } = schema.validate(body);
-  const contact = {
-    id: uuidv4(),
-    name: body.name,
-    email: body.email,
-    phone: body.phone,
-  };
-  if (error) {
-    return false;
+  try {
+    const contacts = await listContacts();
+    const { error } = schema.validate(body);
+    const contact = {
+      id: uuidv4(),
+      name: body.name,
+      email: body.email,
+      phone: body.phone,
+    };
+    if (error) {
+      return false;
+    }
+    let data = [contact, ...contacts];
+    await saveContacts(data);
+    return contact;
+  } catch (error) {
+    console.error(error);
   }
-  let data = [contact, ...contacts];
-  await saveContacts(data);
-  return contact;
 };
 
 const updateContact = async (contactId, body) => {
-  const contacts = await listContacts();
-  const { error } = schema.validate(body);
-  if (error) {
-    return [];
+  try {
+    const contacts = await listContacts();
+    const { error } = schema.validate(body);
+    if (error) {
+      return [];
+    }
+
+    const contact = await contacts.filter((el) => {
+      return el.id === contactId;
+    });
+
+    const indexOfContact = contacts.indexOf(contact[0]);
+
+    let data = contacts;
+    data[indexOfContact].name = body.name;
+    data[indexOfContact].email = body.email;
+    data[indexOfContact].phone = body.phone;
+    console.log(indexOfContact, data);
+    await saveContacts(data);
+    return data[indexOfContact];
+  } catch (error) {
+    console.error(error);
   }
-
-  const contact = await contacts.filter((el) => {
-    return el.id === contactId;
-  });
-
-  const indexOfContact = contacts.indexOf(contact[0]);
-
-  let data = contacts;
-  data[indexOfContact].name = body.name;
-  data[indexOfContact].email = body.email;
-  data[indexOfContact].phone = body.phone;
-  console.log(indexOfContact, data);
-  await saveContacts(data);
-  return data[indexOfContact];
 };
 
 module.exports = {
