@@ -1,53 +1,16 @@
-const fs = require("fs/promises");
-const path = require("node:path");
-const { v4: uuidv4 } = require("uuid");
-const Joi = require("joi");
-const contactsPath = path.join(__dirname, "contacts.json");
+const contact = require("../services/schemas/contact");
 
-const contactSchema = new mongoose.Schema({
-  name: {
-    type: String,
-  },
-  email: {
-    type: String,
-  },
-  phone: {
-    type: String,
-  },
-  favorite: {
-    type: Boolean,
-    default: false,
-  },
-});
-
-const singleContact = mongoose.model("Contact", contactSchema);
-
-const joiSchema = Joi.object({
-  name: Joi.string().required(),
-  email: Joi.string().email().required(),
-  phone: Joi.string().required(),
-});
-
-
-const saveContacts = async (contacts) => {
+const listContacts = async () => {
   try {
-    await fs.writeFile(contactsPath, JSON.stringify(contacts, null, 2));
+    return await contact.find();
   } catch (error) {
     console.error(error);
   }
 };
 
-const listContacts = async () => {
-  try {
-    return await singleContact.find();
-  } catch (error) {
-    console.error(error)
-  }
-};
-
 const getContactById = async (contactId) => {
   try {
-    return await singleContact.findById(contactId)
+    return await contact.findById(contactId);
   } catch (error) {
     console.error(error);
   }
@@ -55,8 +18,7 @@ const getContactById = async (contactId) => {
 
 const removeContact = async (contactId) => {
   try {
-    await singleContact.findByIdAndDelete(contactId);
-    return true;
+    return await contact.findByIdAndDelete(contactId);
   } catch (error) {
     console.error(error);
   }
@@ -64,20 +26,7 @@ const removeContact = async (contactId) => {
 
 const addContact = async (body) => {
   try {
-    const contacts = await listContacts();
-    const { error } = joiSchema.validate(body);
-    const contact = {
-      id: uuidv4(),
-      name: body.name,
-      email: body.email,
-      phone: body.phone,
-    };
-    if (error) {
-      return false;
-    }
-    let data = [contact, ...contacts];
-    await saveContacts(data);
-    return contact;
+    return await contact.create(body);
   } catch (error) {
     console.error(error);
   }
@@ -85,25 +34,27 @@ const addContact = async (body) => {
 
 const updateContact = async (contactId, body) => {
   try {
-    const contacts = await listContacts();
-    const { error } = joiSchema.validate(body);
-    if (error) {
-      return [];
+    return await contact.findByIdAndUpdate(contactId, body, { new: true });
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const updateStatus = async (contactId, body) => {
+  try {
+    const { favorite } = body;
+
+    const updatedContact = await contact.findByIdAndUpdate(
+      contactId,
+      { favorite },
+      { new: true }
+    );
+    if (!updatedContact) {
+      console.error("Not found");
+      // throw new Error("Not found");
     }
 
-    const contact = await contacts.filter((el) => {
-      return el.id === contactId;
-    });
-
-    const indexOfContact = contacts.indexOf(contact[0]);
-
-    let data = contacts;
-    data[indexOfContact].name = body.name;
-    data[indexOfContact].email = body.email;
-    data[indexOfContact].phone = body.phone;
-    console.log(indexOfContact, data);
-    await saveContacts(data);
-    return data[indexOfContact];
+    return updatedContact;
   } catch (error) {
     console.error(error);
   }
@@ -115,4 +66,5 @@ module.exports = {
   removeContact,
   addContact,
   updateContact,
+  updateStatus,
 };
