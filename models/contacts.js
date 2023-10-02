@@ -4,11 +4,30 @@ const { v4: uuidv4 } = require("uuid");
 const Joi = require("joi");
 const contactsPath = path.join(__dirname, "contacts.json");
 
-const schema = Joi.object({
+const contactSchema = new mongoose.Schema({
+  name: {
+    type: String,
+  },
+  email: {
+    type: String,
+  },
+  phone: {
+    type: String,
+  },
+  favorite: {
+    type: Boolean,
+    default: false,
+  },
+});
+
+const singleContact = mongoose.model("Contact", contactSchema);
+
+const joiSchema = Joi.object({
   name: Joi.string().required(),
   email: Joi.string().email().required(),
   phone: Joi.string().required(),
 });
+
 
 const saveContacts = async (contacts) => {
   try {
@@ -20,20 +39,15 @@ const saveContacts = async (contacts) => {
 
 const listContacts = async () => {
   try {
-    const data = await fs.readFile(contactsPath, "utf-8");
-    return JSON.parse(data);
+    return await singleContact.find();
   } catch (error) {
-    return [];
+    console.error(error)
   }
 };
 
 const getContactById = async (contactId) => {
   try {
-    const contacts = await listContacts();
-    const contact = await contacts.filter((el) => {
-      return el.id === contactId;
-    });
-    return contact;
+    return await singleContact.findById(contactId)
   } catch (error) {
     console.error(error);
   }
@@ -41,18 +55,7 @@ const getContactById = async (contactId) => {
 
 const removeContact = async (contactId) => {
   try {
-    const contacts = await listContacts();
-    const data = contacts.filter((contact) => {
-      return contact.id !== contactId;
-    });
-
-    a = data;
-    b = contacts;
-
-    if (JSON.stringify(a) === JSON.stringify(b)) {
-      return false;
-    }
-    await saveContacts(data);
+    await singleContact.findByIdAndDelete(contactId);
     return true;
   } catch (error) {
     console.error(error);
@@ -62,7 +65,7 @@ const removeContact = async (contactId) => {
 const addContact = async (body) => {
   try {
     const contacts = await listContacts();
-    const { error } = schema.validate(body);
+    const { error } = joiSchema.validate(body);
     const contact = {
       id: uuidv4(),
       name: body.name,
@@ -83,7 +86,7 @@ const addContact = async (body) => {
 const updateContact = async (contactId, body) => {
   try {
     const contacts = await listContacts();
-    const { error } = schema.validate(body);
+    const { error } = joiSchema.validate(body);
     if (error) {
       return [];
     }
