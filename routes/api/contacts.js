@@ -2,19 +2,24 @@ const express = require("express");
 
 const router = express.Router();
 const contactLogic = require("../../models/contacts");
+const schema = require("../../services/schemas/contact");
 
 router.get("/", async (req, res, next) => {
-  contacts = await contactLogic.listContacts();
-  if (contacts.legth !== 0) {
-    res.json({
-      status: "success",
-      code: 200,
-      data: {
-        contacts,
-      },
-    });
-  } else {
-    res.status(404).json({ message: "Not found" });
+  try {
+    const contacts = await contactLogic.listContacts();
+    if (contacts.length !== 0) {
+      res.json({
+        status: "success",
+        code: 200,
+        data: {
+          contacts,
+        },
+      });
+    } else {
+      res.status(404).json({ message: "Not found" });
+    }
+  } catch (error) {
+    console.error(error);
   }
 });
 
@@ -40,18 +45,20 @@ router.get("/:contactId", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const contact = await contactLogic.addContact(req.body);
-    if (contact) {
-      res.json({
-        status: "success",
-        code: 201,
-        data: { contact },
-      });
-    } else {
-      res.status(400).json({ message: "missing required name - field" });
+    const { error } = schema.validate(req.body);
+    if (error) {
+      res.status(400).json({ message: error.details[0].message });
+      return;
     }
+
+    const newContact = await contactLogic.addContact(req.body);
+    res.json({
+      status: "success",
+      code: 201,
+      data: { newContact },
+    });
   } catch (error) {
-    console.error(error);
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -72,20 +79,41 @@ router.delete("/:contactId", async (req, res, next) => {
 router.put("/:contactId", async (req, res, next) => {
   try {
     const { contactId } = req.params;
-    const contact = await contactLogic.updateContact(contactId, req.body);
-    if (contact.length !== 0) {
-      res.json({
-        status: "success",
-        code: 200,
-        data: {
-          contact,
-        },
-      });
-    } else if (contact.length === 0) {
-      res.status(400).json({ message: "missing fields" });
-    } else {
-      res.status(404).json({ message: "Not found" });
+    const { error } = schema.validate(req.body);
+    if (error) {
+      res.status(400).json({ message: error.details[0].message });
+      return;
     }
+
+    const contactUpdated = await contactLogic.updateContact(
+      contactId,
+      req.body
+    );
+    res.json({
+      status: "success",
+      code: 201,
+      data: { contactUpdated },
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch("/:contactId/favorite", async (req, res, next) => {
+  try {
+    const contactId = req.params.contactId;
+    const body = req.body;
+
+    if (!body.hasOwnProperty("favorite")) {
+      return res.status(400).json({ message: "missing field favorite" });
+    }
+
+    const contactUpdated = await contactLogic.updateStatus(contactId, req.body);
+    res.json({
+      status: "success",
+      code: 201,
+      data: { contactUpdated },
+    });
   } catch (error) {
     console.error(error);
   }
