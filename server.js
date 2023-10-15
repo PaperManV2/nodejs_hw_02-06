@@ -1,31 +1,27 @@
-const app = require("./app");
 const mongoose = require("mongoose");
+const app = require("./app");
+const PORT = 3000;
+
 require("dotenv").config();
 
-const PORT = process.env.PORT;
-const uriDb = process.env.MONGO_DB_SRV;
+const uriDb = process.env.MONGODB_CONNECTION_STRING;
 
-const startServer = () => {
+const runServer = async () => {
   try {
-    const connection = mongoose.connect(uriDb, {
+    const connection = await mongoose.connect(uriDb, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
     console.log("Database connection run");
 
-    connection
-      .then(() => {
-        app.listen(PORT, function () {
-          console.log(`Server running. Use our API on port: ${PORT}`);
-        });
-      })
-      .catch((err) =>
-        console.log(`Server not running. Error message: ${err.message}`)
-      );
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}. Use your API.`);
+    });
   } catch (error) {
-    console.log("couldn't connect to database");
+    console.log("Cannot connect to Mongo Database");
     console.log(error);
     process.exit(1);
   }
 };
-startServer();
+
+runServer();

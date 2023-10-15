@@ -1,72 +1,14 @@
-const user = require("../services/schemas/users");
-const bcrypt = require("bcrypt");
-const saltRounds = 10;
-const jwt = require("jsonwebtoken");
-require("dotenv").config();
-const secret = process.env.SECRET_KEY;
-const gravatar = require("gravatar");
-const Jimp = require("jimp");
+const User = require("../service/schemas/users");
 
-const addUser = async (body) => {
+const getUser = async (id) => {
   try {
-    const { password, email } = body;
-
-    const alreadyUp = await user.findOne({ email }).lean();
-
-    if (alreadyUp) {
-      return "alreadyUp";
-    }
-
-    const hashedPass = await bcrypt.hash(password, saltRounds);
-    body.password = hashedPass;
-    body.avatarURL = gravatar.url(body.email, { s: 250, protocol: "http" });
-
-    const newUser = await user.create(body);
-    return newUser;
-  } catch (error) {
-    console.error(error);
+    return await User.findById(id);
+  } catch (err) {
+    console.log("Error getting user list: ", err);
+    throw err;
   }
-};
-
-const Login = async (body) => {
-  try {
-    const { password, email } = body;
-    const foundUser = await user.findOne({ email });
-    if (foundUser === null) {
-      return "notUp";
-    }
-    const isPassOk = await bcrypt.compare(password, foundUser.password);
-    if (!isPassOk) {
-      return "passNotOk";
-    }
-
-    const payload = {
-      id: String(foundUser._id),
-    };
-    const token = jwt.sign(payload, secret, { expiresIn: "2h" });
-    foundUser.token = token;
-    const updatedUser = await user.findOneAndUpdate({ email }, foundUser, {
-      new: true,
-    });
-
-    return updatedUser;
-  } catch (error) {
-    console.error(error);
-  }
-};
-
-const imgEdit = async (oldPath, newPath) => {
-  Jimp.read(oldPath)
-    .then((img) => {
-      return img.resize(250, 250).write(newPath);
-    })
-    .catch((err) => {
-      console.error(err);
-    });
 };
 
 module.exports = {
-  addUser,
-  Login,
-  imgEdit,
+  getUser,
 };
