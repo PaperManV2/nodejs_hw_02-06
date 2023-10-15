@@ -2,9 +2,10 @@ const user = require("../services/schemas/users");
 const bcrypt = require("bcrypt");
 const saltRounds = 10;
 const jwt = require("jsonwebtoken");
-const passport = require("passport");
 require("dotenv").config();
 const secret = process.env.SECRET_KEY;
+const gravatar = require("gravatar");
+const Jimp = require("jimp");
 
 const addUser = async (body) => {
   try {
@@ -18,6 +19,7 @@ const addUser = async (body) => {
 
     const hashedPass = await bcrypt.hash(password, saltRounds);
     body.password = hashedPass;
+    body.avatarURL = gravatar.url(body.email, { s: 250, protocol: "http" });
 
     const newUser = await user.create(body);
     return newUser;
@@ -53,7 +55,18 @@ const Login = async (body) => {
   }
 };
 
+const imgEdit = async (oldPath, newPath) => {
+  Jimp.read(oldPath)
+    .then((img) => {
+      return img.resize(250, 250).write(newPath);
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+};
+
 module.exports = {
   addUser,
   Login,
+  imgEdit,
 };
