@@ -1,20 +1,20 @@
 const express = require("express");
 const logger = require("morgan");
+
 const cors = require("cors");
-require("./config/config-passport");
-const passport = require("passport");
 
 const contactsRouter = require("./routes/api/contacts");
 const usersRouter = require("./routes/api/users");
+const passport = require("passport");
 
 const app = express();
 
 const formatsLogger = app.get("env") === "development" ? "dev" : "short";
 
-app.use(express.static("public"));
 app.use(logger(formatsLogger));
 app.use(cors());
 app.use(express.json());
+app.use("/avatars", express.static("public/avatars"));
 
 app.use("/api/contacts", contactsRouter);
 app.use("/api/users", usersRouter);

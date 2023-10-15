@@ -1,110 +1,267 @@
 const express = require("express");
-const router = express.Router();
-const userLogic = require("../../models/users");
-const auth = require("../../config/config-passport");
-const fs = require("fs").promises;
+const Joi = require("joi");
+
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+
+const User = require("../../service/schemas/users");
+const auth = require("../../config/passport/auth");
+const { getUser } = require("../../models/users");
+
+const gravatar = require("gravatar");
+
 const multer = require("multer");
+const Jimp = require("jimp");
 const path = require("path");
-const uploadDir = path.join(process.cwd(), "tmp");
-const imgStorage = path.join(process.cwd(), "public/avatars");
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, file.originalname);
-  },
-  limits: {
-    fileSize: 1048576,
-  },
+
+const fs = require("fs").promises;
+
+const Mailer = require("../../config/mailer");
+
+const router = express.Router();
+
+const avatarUpload = multer({
+  dest: "tmp",
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-const upload = multer({
-  storage: storage,
+const console = require("console");
+
+require("dotenv").config();
+const secret = process.env.SECRET_WORD;
+
+const signupSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(8).required(),
 });
 
-router.post("/signup", async (req, res, next) => {
+router.post("/signup", async (req, res) => {
   try {
-    const { password, email } = req.body;
-
-    if (
-      !req.body.hasOwnProperty("password") ||
-      typeof password !== "string" ||
-      !req.body.hasOwnProperty("email") ||
-      typeof email !== "string"
-    ) {
-      return res.status(400).json({ message: "Email or Password are invalid" });
-    }
-    const newUser = await userLogic.addUser(req.body);
-
-    if (newUser === "alreadyUp") {
-      return res.status(409).json({
-        message: "Email is already in use",
-      });
+    const { error } = signupSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ message: "Validation error" });
     }
 
-    res.status(200).json({ message: "succes", user: "added", data: req.body });
-  } catch (error) {
-    console.error(error);
-  }
-});
-
-router.patch("/login", async (req, res, next) => {
-  try {
-    const { password, email } = req.body;
-
-    if (
-      !req.body.hasOwnProperty("password") ||
-      typeof password !== "string" ||
-      !req.body.hasOwnProperty("email") ||
-      typeof email !== "string"
-    ) {
-      return res.status(400).json({ message: "Email or Password are invalid" });
-    }
-    const user = await userLogic.Login(req.body);
-
-    if (user == "notUp") {
-      return res.status(404).json({ message: "Email not found" });
-    } else if (user == "passNotOk") {
-      return res.status(409).json({ message: "Incorrect Password" });
+    const existingUser = await User.findOne({ email: req.body.email });
+    if (existingUser) {
+      return res.status(409).json({ message: "Email in use" });
     }
 
-    res.status(200).json({
-      status: "updated",
-      data: {
-        user,
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
+
+    const avatarURL = gravatar.url(req.body.email, {
+      s: "250",
+      r: "x",
+      d: "retro",
+    });
+
+    const user = new User({
+      email: req.body.email,
+      password: hashedPassword,
+      subscription: "starter",
+      avatarURL,
+    });
+
+    const verificationToken = Mailer.generateVerificationToken();
+    user.verificationToken = verificationToken;
+
+    await user.save();
+
+    await Mailer.sendVerificationEmail(user.email, verificationToken);
+
+    res.status(201).json({
+      user: {
+        email: user.email,
+        subscription: user.subscription,
+        avatarURL: user.avatarURL,
+        verificationToken: user.verificationToken,
       },
     });
   } catch (error) {
     console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+const loginSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().required(),
+});
+
+router.post("/login", async (req, res) => {
+  const { error } = loginSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ message: error.details[0].message });
+  }
+
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(401).json({ message: "Email or password is wrong" });
+    }
+
+    if (!user.verify) {
+      return res.status(401).json({ message: "Account not verified" });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+
+    if (!passwordMatch) {
+      return res.status(401).json({ message: "Email or password is wrong" });
+    }
+
+    const payload = {
+      id: user._id,
+      email: user.email,
+    };
+
+    const token = jwt.sign(payload, secret, { expiresIn: "1h" });
+
+    return res.status(200).json({
+      token,
+      user: {
+        email: user.email,
+        subscription: user.subscription,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+router.post("/logout", auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await getUser(userId);
+
+    if (!user) {
+      return res.status(401).json({
+        status: "error",
+        code: 401,
+        message: "Unauthorized",
+      });
+    }
+
+    user.token = null;
+    await user.save();
+
+    res.status(200).json({
+      message: "Logout is done",
+    });
+    return;
+  } catch (error) {
+    res.status(500).json({
+      status: "error",
+      code: 500,
+      message: "An error occurred during logout.",
+    });
+  }
+});
+
+router.get("/current", auth, async (req, res) => {
+  try {
+    const currentUser = req.user;
+
+    if (!currentUser) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    res.status(200).json({
+      email: currentUser.email,
+      subscription: currentUser.subscription,
+      avatar: currentUser.avatarURL,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
 router.patch(
-  "/avatar",
-  upload.single("picture"),
+  "/avatars",
   auth,
+  avatarUpload.single("avatar"),
   async (req, res, next) => {
-    const user = req.user;
-    const { path: temporaryName } = req.file;
     try {
-      const newImgName = String(user._id) + ".png";
-      const fileName = path.join(imgStorage, newImgName);
-      await userLogic.imgEdit(temporaryName, fileName);
-      await fs.rm(temporaryName);
+      const { file } = req;
+      if (!file) {
+        return res.status(400).json({ message: "No file provided" });
+      }
+      const img = await Jimp.read(file.path);
+      await img.resize(250, 250).writeAsync(file.path);
 
-      user.avatarURL = fileName;
-      await user.save();
-    } catch (err) {
-      await fs.unlink(temporaryName);
-      return next(err);
+      const newName = `avatar_${req.user._id}${path.extname(
+        file.originalname
+      )}`;
+      const newLocation = path.join(__dirname, "../../public/avatars", newName);
+      await fs.rename(file.path, newLocation);
+
+      const avatarURL = `/avatars/${newName}`;
+      await User.findByIdAndUpdate(req.user._id, { avatarURL });
+
+      res.status(200).json({ avatarURL });
+    } catch (error) {
+      next(error);
     }
-    res.json({
-      avatar: user.avatarURL,
-      message: "Plik załadowany pomyślnie",
-      status: 200,
-    });
   }
 );
+
+router.post("/verify", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Missing required field email" });
+    }
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.verify) {
+      return res
+        .status(400)
+        .json({ message: "Verification has already been passed" });
+    }
+
+    const verificationToken = Mailer.generateVerificationToken();
+    user.verificationToken = verificationToken;
+    await user.save();
+    await Mailer.sendVerificationEmail(user.email, verificationToken);
+
+    res.status(200).json({ message: "Verification email sent" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+router.get("/verify/:verificationToken", async (req, res) => {
+  try {
+    const verificationToken = req.params.verificationToken;
+
+    const user = await User.findOne({ verificationToken });
+
+    if (!user) {
+      return res.status(404).json({ message: " User not found" });
+    }
+
+    user.verify = true;
+
+    await user.save();
+
+    user.verificationToken = null;
+
+    res.status(200).json({ message: "Verification successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 module.exports = router;

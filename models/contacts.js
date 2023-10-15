@@ -1,62 +1,72 @@
-const contact = require("../services/schemas/contact");
+const Contact = require("../service/schemas/task");
 
 const listContacts = async () => {
   try {
-    return await contact.find();
+    return await Contact.find();
   } catch (error) {
-    console.error(error);
+    console.log("Error getting contact list", error);
+    throw error;
   }
 };
 
 const getContactById = async (contactId) => {
   try {
-    return await contact.findById(contactId);
+    return await Contact.findById(contactId);
   } catch (error) {
-    console.error(error);
+    console.log(`Error getting contact with id ${contactId}: `, error);
+    throw error;
   }
 };
 
 const removeContact = async (contactId) => {
   try {
-    return await contact.findByIdAndDelete(contactId);
+    const result = await Contact.findByIdAndDelete(contactId);
+    return result !== null;
   } catch (error) {
-    console.error(error);
+    console.log(`Error removing contact with id ${contactId}: `, error);
+    throw error;
   }
 };
 
 const addContact = async (body) => {
   try {
-    return await contact.create(body);
+    return await Contact.create(body);
   } catch (error) {
-    console.error(error);
+    console.log("Error adding new contact: ", error);
+    throw error;
   }
 };
 
 const updateContact = async (contactId, body) => {
   try {
-    return await contact.findByIdAndUpdate(contactId, body, { new: true });
+    return await Contact.findByIdAndUpdate(contactId, body, { new: true });
   } catch (error) {
-    console.error(error);
+    console.log("an error occurred during updating the contact:", error);
+    throw error;
   }
 };
 
-const updateStatus = async (contactId, body) => {
+const updateStatusContact = async (contactId, body) => {
   try {
     const { favorite } = body;
+    if (favorite === undefined) {
+      throw new Error("Missing field favorite");
+    }
 
-    const updatedContact = await contact.findByIdAndUpdate(
+    const updatedContact = await Contact.findByIdAndUpdate(
       contactId,
       { favorite },
       { new: true }
     );
+
     if (!updatedContact) {
-      console.error("Not found");
-      // throw new Error("Not found");
+      throw new Error("Not found");
     }
 
     return updatedContact;
   } catch (error) {
-    console.error(error);
+    console.log("an error occurred during updating the contact:", error);
+    throw error;
   }
 };
 
@@ -66,5 +76,5 @@ module.exports = {
   removeContact,
   addContact,
   updateContact,
-  updateStatus,
+  updateStatusContact,
 };
